@@ -13,6 +13,8 @@ type ScanResultState = {
   checkedInAt?: string;
 };
 
+type FeedbackLevel = Exclude<ScanLevel, "neutral">;
+
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
@@ -38,6 +40,19 @@ function getErrorMessage(error: unknown): string {
     return error.message;
   }
   return "Unable to start camera scanner.";
+}
+
+function isNoCodeDetectedError(error: unknown): boolean {
+  if (!error) return false;
+
+  const errorName = error instanceof Error ? error.name : "";
+  const errorMessage = error instanceof Error ? error.message : String(error);
+
+  return (
+    errorName === "NotFoundException" ||
+    /No MultiFormat Readers were able to detect the code/i.test(errorMessage) ||
+    /\bnot found\b/i.test(errorMessage)
+  );
 }
 
 function pickPreferredCamera(
@@ -84,6 +99,10 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const processingRef = useRef(false);
+  const feedbackTimeoutRef = useRef<number | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
+  const lastTokenRef = useRef<string>("");
+  const lastTokenAtRef = useRef<number>(0);
 
   const [apiBaseInput, setApiBaseInput] = useState<string>(getStoredApiBase());
   const [cameraReady, setCameraReady] = useState(false);
@@ -99,6 +118,9 @@ export default function App() {
   });
   const [installPrompt, setInstallPrompt] =
     useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(false);
+  const [flashLevel, setFlashLevel] = useState<FeedbackLevel | null>(null);
+  const [toast, setToast] = useState<{ level: FeedbackLevel; text: string } | null>(null);
 
   const apiBase = useMemo(() => normalizeApiBase(apiBaseInput), [apiBaseInput]);
 
@@ -107,6 +129,26 @@ export default function App() {
     controlsRef.current = null;
     setCameraReady(false);
     setActiveCameraLabel("");
+  }, []);
+
+  const triggerFeedback = useCallback((level: FeedbackLevel, text: string) => {
+    if (feedbackTimeoutRef.current) {
+      window.clearTimeout(feedbackTimeoutRef.current);
+    }
+    if (toastTimeoutRef.current) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+
+    setFlashLevel(level);
+    setToast({ level, text });
+
+    feedbackTimeoutRef.current = window.setTimeout(() => {
+      setFlashLevel(null);
+    }, 950);
+
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToast(null);
+    }, 1700);
   }, []);
 
   const consumeCheckInToken = useCallback(
@@ -140,42 +182,50 @@ export default function App() {
         };
 
         if (!response.ok || !payload.success) {
+          const message =
+            payload.error || payload.details || "Invalid or expired QR code.";
           setResult({
             level: "error",
             title: "Check-in failed",
-            message:
-              payload.error || payload.details || "Invalid or expired QR code.",
+            message,
           });
+          triggerFeedback("error", message);
           return;
         }
 
         if (payload.data?.alreadyCheckedIn) {
+          const message = "This attendee has already been checked in.";
           setResult({
             level: "warning",
             title: "Already checked in",
-            message: "This attendee has already been checked in.",
+            message,
             checkedInAt: payload.data.checkedInAt,
           });
+          triggerFeedback("warning", "Already checked in");
           return;
         }
 
+        const message = "Attendee marked as checked in.";
         setResult({
           level: "success",
           title: "Check-in successful",
-          message: "Attendee marked as checked in.",
+          message,
           checkedInAt: payload.data?.checkedInAt,
         });
+        triggerFeedback("success", "Check-in successful");
       } catch (error: unknown) {
+        const message = getErrorMessage(error);
         setResult({
           level: "error",
           title: "Scanner error",
-          message: getErrorMessage(error),
+          message,
         });
+        triggerFeedback("error", message);
       } finally {
         setProcessing(false);
       }
     },
-    [apiBase],
+    [apiBase, triggerFeedback],
   );
 
   const startScanner = useCallback(async () => {
@@ -204,7 +254,6 @@ export default function App() {
 
             const scannedText = scanResult.getText();
             setLastScannedValue(scannedText);
-            stopScanner();
 
             const token = extractCheckInToken(scannedText);
             if (!token) {
@@ -213,22 +262,32 @@ export default function App() {
                 title: "Invalid QR payload",
                 message: "Scanned QR does not contain a check-in token.",
               });
+              triggerFeedback("error", "Invalid QR payload");
+              window.setTimeout(() => {
+                processingRef.current = false;
+              }, 700);
+              return;
+            }
+
+            const now = Date.now();
+            const isRecentDuplicate =
+              token === lastTokenRef.current && now - lastTokenAtRef.current < 2200;
+            if (isRecentDuplicate) {
               processingRef.current = false;
               return;
             }
 
+            lastTokenRef.current = token;
+            lastTokenAtRef.current = now;
+
             void consumeCheckInToken(token).finally(() => {
-              processingRef.current = false;
+              window.setTimeout(() => {
+                processingRef.current = false;
+              }, 700);
             });
           }
 
-          if (
-            scanError &&
-            !(
-              scanError instanceof Error &&
-              scanError.name === "NotFoundException"
-            )
-          ) {
+          if (scanError && !isNoCodeDetectedError(scanError)) {
             setCameraError(getErrorMessage(scanError));
           }
         },
@@ -250,7 +309,7 @@ export default function App() {
         message: "Could not start camera. Use manual token input below.",
       });
     }
-  }, [consumeCheckInToken, stopScanner]);
+  }, [consumeCheckInToken, stopScanner, triggerFeedback]);
 
   const submitManualToken = useCallback(() => {
     const rawInput = manualInput.trim();
@@ -260,14 +319,14 @@ export default function App() {
         title: "Missing input",
         message: "Paste a token or QR URL.",
       });
+      triggerFeedback("error", "Paste a token or QR URL");
       return;
     }
 
     const token = extractCheckInToken(rawInput) ?? rawInput;
     setLastScannedValue(rawInput);
-    stopScanner();
     void consumeCheckInToken(token);
-  }, [consumeCheckInToken, manualInput, stopScanner]);
+  }, [consumeCheckInToken, manualInput, triggerFeedback]);
 
   const saveApiBase = useCallback(() => {
     const normalized = normalizeApiBase(apiBaseInput);
@@ -298,54 +357,102 @@ export default function App() {
   }, [installPrompt]);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia("(display-mode: standalone)");
+    const updateStandaloneMode = () => {
+      const iosStandalone =
+        "standalone" in navigator &&
+        Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+      setIsStandalone(mediaQuery.matches || iosStandalone);
+    };
+
+    updateStandaloneMode();
+
     const onBeforeInstallPrompt = (event: Event) => {
+      if (isStandalone) {
+        return;
+      }
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
     };
 
+    const onDisplayModeChange = () => {
+      updateStandaloneMode();
+    };
+
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+    mediaQuery.addEventListener("change", onDisplayModeChange);
     return () => {
       window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
+      mediaQuery.removeEventListener("change", onDisplayModeChange);
+      stopScanner();
+      if (feedbackTimeoutRef.current) {
+        window.clearTimeout(feedbackTimeoutRef.current);
+      }
+      if (toastTimeoutRef.current) {
+        window.clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, [isStandalone, stopScanner]);
+
+  useEffect(() => {
+    void startScanner();
+    return () => {
       stopScanner();
     };
-  }, [stopScanner]);
+  }, [startScanner, stopScanner]);
 
   const resultClass = `result result-${result.level}`;
 
   return (
     <main className="app-shell">
       <header className="header">
+        {!isStandalone && installPrompt ? (
+          <button
+            className="install-icon-btn"
+            type="button"
+            aria-label="Install scanner app"
+            title="Install scanner app"
+            onClick={() => void handleInstall()}
+          >
+            ⤓
+          </button>
+        ) : null}
         <h1>Savvio Concorde</h1>
         <p>Staff Check-In Scanner</p>
       </header>
 
-      <section className="panel">
-        <label className="label" htmlFor="api-base">
-          API Base URL
-        </label>
-        <div className="row">
-          <input
-            id="api-base"
-            className="input"
-            type="url"
-            value={apiBaseInput}
-            onChange={(event) => {
-              setApiBaseInput(event.target.value);
-            }}
-            placeholder="https://concorde-api-production.up.railway.app"
-          />
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={saveApiBase}
-          >
-            Save
-          </button>
-        </div>
+      <section className="panel panel-collapsible">
+        <details>
+          <summary>Scanner Settings</summary>
+          <div className="settings-body">
+            <label className="label" htmlFor="api-base">
+              API Base URL
+            </label>
+            <div className="row">
+              <input
+                id="api-base"
+                className="input"
+                type="url"
+                value={apiBaseInput}
+                onChange={(event) => {
+                  setApiBaseInput(event.target.value);
+                }}
+                placeholder="https://concorde-api-production.up.railway.app"
+              />
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={saveApiBase}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </details>
       </section>
 
       <section className="panel">
-        <div className="reader-wrap">
+        <div className={`reader-wrap ${flashLevel ? `reader-flash-${flashLevel}` : ""}`}>
           <video
             ref={videoRef}
             className="reader-video"
@@ -366,7 +473,7 @@ export default function App() {
             type="button"
             onClick={() => void startScanner()}
           >
-            Start Scan
+            Start Camera
           </button>
           <button
             className="btn btn-secondary"
@@ -374,17 +481,6 @@ export default function App() {
             onClick={stopScanner}
           >
             Stop
-          </button>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={() => {
-              processingRef.current = false;
-              void startScanner();
-            }}
-            disabled={processing}
-          >
-            Scan Next
           </button>
         </div>
 
@@ -432,15 +528,8 @@ export default function App() {
         <p className="last-value">{lastScannedValue}</p>
       </section>
 
-      {installPrompt ? (
-        <button
-          className="btn btn-primary install-btn"
-          type="button"
-          onClick={() => void handleInstall()}
-        >
-          Install on Android
-        </button>
-      ) : null}
+      {toast ? <div className={`scan-toast scan-toast-${toast.level}`}>{toast.text}</div> : null}
+
     </main>
   );
 }

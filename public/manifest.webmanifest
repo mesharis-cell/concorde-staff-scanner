@@ -4,8 +4,8 @@
   "description": "Savvio Concorde staff check-in scanner",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0e0e0e",
-  "theme_color": "#0e0e0e",
+  "background_color": "#111111",
+  "theme_color": "#111111",
   "orientation": "portrait",
   "icons": [
     {
