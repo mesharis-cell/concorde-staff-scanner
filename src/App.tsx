@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
+import {
+  BrowserMultiFormatReader,
+  type IScannerControls,
+} from "@zxing/browser";
 
 type ScanLevel = "success" | "warning" | "error" | "neutral";
 
@@ -37,13 +40,17 @@ function getErrorMessage(error: unknown): string {
   return "Unable to start camera scanner.";
 }
 
-function pickPreferredCamera(devices: MediaDeviceInfo[]): MediaDeviceInfo | undefined {
+function pickPreferredCamera(
+  devices: MediaDeviceInfo[],
+): MediaDeviceInfo | undefined {
   if (devices.length === 0) return undefined;
 
   const rearCameraRegex =
     /(back|rear|environment|traseira|trasera|arriere|arrière|rueck|后置|後置|背面)/i;
 
-  return devices.find((device) => rearCameraRegex.test(device.label)) ?? devices[0];
+  return (
+    devices.find((device) => rearCameraRegex.test(device.label)) ?? devices[0]
+  );
 }
 
 function extractCheckInToken(scannedText: string): string | null {
@@ -88,9 +95,10 @@ export default function App() {
   const [result, setResult] = useState<ScanResultState>({
     level: "neutral",
     title: "Ready",
-    message: "Start scanning to check in attendees."
+    message: "Start scanning to check in attendees.",
   });
-  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installPrompt, setInstallPrompt] =
+    useState<BeforeInstallPromptEvent | null>(null);
 
   const apiBase = useMemo(() => normalizeApiBase(apiBaseInput), [apiBaseInput]);
 
@@ -104,14 +112,21 @@ export default function App() {
   const consumeCheckInToken = useCallback(
     async (token: string) => {
       setProcessing(true);
-      setResult({ level: "neutral", title: "Processing", message: "Submitting check-in token..." });
+      setResult({
+        level: "neutral",
+        title: "Processing",
+        message: "Submitting check-in token...",
+      });
 
       try {
-        const response = await fetch(`${apiBase}/api/v1/public/check-in/consume`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token })
-        });
+        const response = await fetch(
+          `${apiBase}/api/v1/public/check-in/consume`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+          },
+        );
 
         const payload = (await response.json()) as {
           success?: boolean;
@@ -128,7 +143,8 @@ export default function App() {
           setResult({
             level: "error",
             title: "Check-in failed",
-            message: payload.error || payload.details || "Invalid or expired QR code."
+            message:
+              payload.error || payload.details || "Invalid or expired QR code.",
           });
           return;
         }
@@ -138,7 +154,7 @@ export default function App() {
             level: "warning",
             title: "Already checked in",
             message: "This attendee has already been checked in.",
-            checkedInAt: payload.data.checkedInAt
+            checkedInAt: payload.data.checkedInAt,
           });
           return;
         }
@@ -147,19 +163,19 @@ export default function App() {
           level: "success",
           title: "Check-in successful",
           message: "Attendee marked as checked in.",
-          checkedInAt: payload.data?.checkedInAt
+          checkedInAt: payload.data?.checkedInAt,
         });
       } catch (error: unknown) {
         setResult({
           level: "error",
           title: "Scanner error",
-          message: getErrorMessage(error)
+          message: getErrorMessage(error),
         });
       } finally {
         setProcessing(false);
       }
     },
-    [apiBase]
+    [apiBase],
   );
 
   const startScanner = useCallback(async () => {
@@ -167,7 +183,11 @@ export default function App() {
 
     stopScanner();
     setCameraError("");
-    setResult({ level: "neutral", title: "Starting", message: "Opening camera..." });
+    setResult({
+      level: "neutral",
+      title: "Starting",
+      message: "Opening camera...",
+    });
 
     try {
       const scanner = new BrowserMultiFormatReader();
@@ -191,7 +211,7 @@ export default function App() {
               setResult({
                 level: "error",
                 title: "Invalid QR payload",
-                message: "Scanned QR does not contain a check-in token."
+                message: "Scanned QR does not contain a check-in token.",
               });
               processingRef.current = false;
               return;
@@ -204,23 +224,30 @@ export default function App() {
 
           if (
             scanError &&
-            !(scanError instanceof Error && scanError.name === "NotFoundException")
+            !(
+              scanError instanceof Error &&
+              scanError.name === "NotFoundException"
+            )
           ) {
             setCameraError(getErrorMessage(scanError));
           }
-        }
+        },
       );
 
       controlsRef.current = controls;
       setCameraReady(true);
       setActiveCameraLabel(preferredCamera?.label || "Default camera");
-      setResult({ level: "neutral", title: "Scanning", message: "Point camera at attendee QR." });
+      setResult({
+        level: "neutral",
+        title: "Scanning",
+        message: "Point camera at attendee QR.",
+      });
     } catch (error: unknown) {
       setCameraError(getErrorMessage(error));
       setResult({
         level: "error",
         title: "Camera error",
-        message: "Could not start camera. Use manual token input below."
+        message: "Could not start camera. Use manual token input below.",
       });
     }
   }, [consumeCheckInToken, stopScanner]);
@@ -228,7 +255,11 @@ export default function App() {
   const submitManualToken = useCallback(() => {
     const rawInput = manualInput.trim();
     if (!rawInput) {
-      setResult({ level: "error", title: "Missing input", message: "Paste a token or QR URL." });
+      setResult({
+        level: "error",
+        title: "Missing input",
+        message: "Paste a token or QR URL.",
+      });
       return;
     }
 
@@ -241,13 +272,21 @@ export default function App() {
   const saveApiBase = useCallback(() => {
     const normalized = normalizeApiBase(apiBaseInput);
     if (!normalized) {
-      setResult({ level: "error", title: "Invalid API base", message: "API base URL cannot be empty." });
+      setResult({
+        level: "error",
+        title: "Invalid API base",
+        message: "API base URL cannot be empty.",
+      });
       return;
     }
 
     localStorage.setItem("savvio_scanner_api_base", normalized);
     setApiBaseInput(normalized);
-    setResult({ level: "neutral", title: "Saved", message: "API base URL saved for this device." });
+    setResult({
+      level: "neutral",
+      title: "Saved",
+      message: "API base URL saved for this device.",
+    });
   }, [apiBaseInput]);
 
   const handleInstall = useCallback(async () => {
@@ -295,7 +334,11 @@ export default function App() {
             }}
             placeholder="https://concorde-api-production.up.railway.app"
           />
-          <button className="btn btn-secondary" type="button" onClick={saveApiBase}>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={saveApiBase}
+          >
             Save
           </button>
         </div>
@@ -303,17 +346,33 @@ export default function App() {
 
       <section className="panel">
         <div className="reader-wrap">
-          <video ref={videoRef} className="reader-video" muted playsInline autoPlay />
+          <video
+            ref={videoRef}
+            className="reader-video"
+            muted
+            playsInline
+            autoPlay
+          />
           {!cameraReady ? <div className="overlay">Camera idle</div> : null}
         </div>
 
-        {activeCameraLabel ? <p className="help-text">Camera: {activeCameraLabel}</p> : null}
+        {activeCameraLabel ? (
+          <p className="help-text">Camera: {activeCameraLabel}</p>
+        ) : null}
 
         <div className="actions">
-          <button className="btn btn-primary" type="button" onClick={() => void startScanner()}>
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={() => void startScanner()}
+          >
             Start Scan
           </button>
-          <button className="btn btn-secondary" type="button" onClick={stopScanner}>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={stopScanner}
+          >
             Stop
           </button>
           <button
@@ -353,14 +412,18 @@ export default function App() {
           </button>
         </div>
 
-        {cameraError ? <p className="error-text">Camera issue: {cameraError}</p> : null}
+        {cameraError ? (
+          <p className="error-text">Camera issue: {cameraError}</p>
+        ) : null}
       </section>
 
       <section className={resultClass}>
         <h2>{result.title}</h2>
         <p>{result.message}</p>
         {result.checkedInAt ? (
-          <p className="meta">Timestamp: {new Date(result.checkedInAt).toLocaleString()}</p>
+          <p className="meta">
+            Timestamp: {new Date(result.checkedInAt).toLocaleString()}
+          </p>
         ) : null}
       </section>
 
@@ -370,7 +433,11 @@ export default function App() {
       </section>
 
       {installPrompt ? (
-        <button className="btn btn-primary install-btn" type="button" onClick={() => void handleInstall()}>
+        <button
+          className="btn btn-primary install-btn"
+          type="button"
+          onClick={() => void handleInstall()}
+        >
           Install on Android
         </button>
       ) : null}
