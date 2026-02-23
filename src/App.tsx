@@ -14,6 +14,7 @@ type ScanResultState = {
 };
 
 type FeedbackLevel = Exclude<ScanLevel, "neutral">;
+type CheckInInput = { kind: "token" | "reference"; value: string };
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -95,6 +96,18 @@ function extractCheckInToken(scannedText: string): string | null {
   return null;
 }
 
+function extractPassReferenceId(scannedText: string): string | null {
+  const trimmed = scannedText.trim();
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/^user-[a-fA-F0-9]{24}-event-[a-fA-F0-9]{24}$/);
+  if (!match) {
+    return null;
+  }
+
+  return trimmed;
+}
+
 export default function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
@@ -151,13 +164,13 @@ export default function App() {
     }, 1700);
   }, []);
 
-  const consumeCheckInToken = useCallback(
-    async (token: string) => {
+  const consumeCheckInPayload = useCallback(
+    async (checkInInput: CheckInInput) => {
       setProcessing(true);
       setResult({
         level: "neutral",
         title: "Processing",
-        message: "Submitting check-in token...",
+        message: "Submitting check-in...",
       });
 
       try {
@@ -166,7 +179,11 @@ export default function App() {
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ token }),
+            body: JSON.stringify(
+              checkInInput.kind === "token"
+                ? { token: checkInInput.value }
+                : { reference: checkInInput.value, passReferenceId: checkInInput.value },
+            ),
           },
         );
 
@@ -256,11 +273,14 @@ export default function App() {
             setLastScannedValue(scannedText);
 
             const token = extractCheckInToken(scannedText);
-            if (!token) {
+            const passReferenceId = token
+              ? null
+              : extractPassReferenceId(scannedText);
+            if (!token && !passReferenceId) {
               setResult({
                 level: "error",
                 title: "Invalid QR payload",
-                message: "Scanned QR does not contain a check-in token.",
+                message: "Scanned QR does not contain a supported check-in payload.",
               });
               triggerFeedback("error", "Invalid QR payload");
               window.setTimeout(() => {
@@ -269,18 +289,24 @@ export default function App() {
               return;
             }
 
+            const checkInInput: CheckInInput = token
+              ? { kind: "token", value: token }
+              : { kind: "reference", value: passReferenceId as string };
+
             const now = Date.now();
             const isRecentDuplicate =
-              token === lastTokenRef.current && now - lastTokenAtRef.current < 2200;
+              `${checkInInput.kind}:${checkInInput.value}` ===
+                lastTokenRef.current &&
+              now - lastTokenAtRef.current < 2200;
             if (isRecentDuplicate) {
               processingRef.current = false;
               return;
             }
 
-            lastTokenRef.current = token;
+            lastTokenRef.current = `${checkInInput.kind}:${checkInInput.value}`;
             lastTokenAtRef.current = now;
 
-            void consumeCheckInToken(token).finally(() => {
+            void consumeCheckInPayload(checkInInput).finally(() => {
               window.setTimeout(() => {
                 processingRef.current = false;
               }, 700);
@@ -309,7 +335,7 @@ export default function App() {
         message: "Could not start camera. Use manual token input below.",
       });
     }
-  }, [consumeCheckInToken, stopScanner, triggerFeedback]);
+  }, [consumeCheckInPayload, stopScanner, triggerFeedback]);
 
   const submitManualToken = useCallback(() => {
     const rawInput = manualInput.trim();
@@ -323,10 +349,24 @@ export default function App() {
       return;
     }
 
-    const token = extractCheckInToken(rawInput) ?? rawInput;
+    const token = extractCheckInToken(rawInput);
+    const passReferenceId = token ? null : extractPassReferenceId(rawInput);
+    if (!token && !passReferenceId) {
+      setResult({
+        level: "error",
+        title: "Invalid input",
+        message: "Input is not a valid token, check-in URL, or pass reference.",
+      });
+      triggerFeedback("error", "Invalid input payload");
+      return;
+    }
+
+    const checkInInput: CheckInInput = token
+      ? { kind: "token", value: token }
+      : { kind: "reference", value: passReferenceId as string };
     setLastScannedValue(rawInput);
-    void consumeCheckInToken(token);
-  }, [consumeCheckInToken, manualInput, triggerFeedback]);
+    void consumeCheckInPayload(checkInInput);
+  }, [consumeCheckInPayload, manualInput, triggerFeedback]);
 
   const saveApiBase = useCallback(() => {
     const normalized = normalizeApiBase(apiBaseInput);
