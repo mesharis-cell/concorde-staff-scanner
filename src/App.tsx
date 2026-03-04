@@ -133,7 +133,10 @@ export default function App() {
     useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [flashLevel, setFlashLevel] = useState<FeedbackLevel | null>(null);
-  const [toast, setToast] = useState<{ level: FeedbackLevel; text: string } | null>(null);
+  const [toast, setToast] = useState<{
+    level: FeedbackLevel;
+    text: string;
+  } | null>(null);
 
   const apiBase = useMemo(() => normalizeApiBase(apiBaseInput), [apiBaseInput]);
 
@@ -174,18 +177,18 @@ export default function App() {
       });
 
       try {
-        const response = await fetch(
-          `${apiBase}/api/v1/public/check-in/consume`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(
-              checkInInput.kind === "token"
-                ? { token: checkInInput.value }
-                : { reference: checkInInput.value, passReferenceId: checkInInput.value },
-            ),
-          },
-        );
+        const response = await fetch(`${apiBase}/v1/public/check-in/consume`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            checkInInput.kind === "token"
+              ? { token: checkInInput.value }
+              : {
+                  reference: checkInInput.value,
+                  passReferenceId: checkInInput.value,
+                },
+          ),
+        });
 
         const payload = (await response.json()) as {
           success?: boolean;
@@ -280,7 +283,8 @@ export default function App() {
               setResult({
                 level: "error",
                 title: "Invalid QR payload",
-                message: "Scanned QR does not contain a supported check-in payload.",
+                message:
+                  "Scanned QR does not contain a supported check-in payload.",
               });
               triggerFeedback("error", "Invalid QR payload");
               window.setTimeout(() => {
@@ -296,8 +300,7 @@ export default function App() {
             const now = Date.now();
             const isRecentDuplicate =
               `${checkInInput.kind}:${checkInInput.value}` ===
-                lastTokenRef.current &&
-              now - lastTokenAtRef.current < 2200;
+                lastTokenRef.current && now - lastTokenAtRef.current < 2200;
             if (isRecentDuplicate) {
               processingRef.current = false;
               return;
@@ -492,7 +495,9 @@ export default function App() {
       </section>
 
       <section className="panel">
-        <div className={`reader-wrap ${flashLevel ? `reader-flash-${flashLevel}` : ""}`}>
+        <div
+          className={`reader-wrap ${flashLevel ? `reader-flash-${flashLevel}` : ""}`}
+        >
           <video
             ref={videoRef}
             className="reader-video"
@@ -568,8 +573,11 @@ export default function App() {
         <p className="last-value">{lastScannedValue}</p>
       </section>
 
-      {toast ? <div className={`scan-toast scan-toast-${toast.level}`}>{toast.text}</div> : null}
-
+      {toast ? (
+        <div className={`scan-toast scan-toast-${toast.level}`}>
+          {toast.text}
+        </div>
+      ) : null}
     </main>
   );
 }
