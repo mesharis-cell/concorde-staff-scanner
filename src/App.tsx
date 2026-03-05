@@ -451,18 +451,105 @@ export default function App() {
       <header className="header">
         {!isStandalone && installPrompt ? (
           <button
-            className="install-icon-btn"
+            className="install-action-btn"
             type="button"
             aria-label="Install scanner app"
             title="Install scanner app"
             onClick={() => void handleInstall()}
           >
-            ⤓
+            <span aria-hidden>⤓</span>
+            <span>Install App</span>
           </button>
         ) : null}
         <h1>Savvio Concorde</h1>
         <p>Staff Check-In Scanner</p>
       </header>
+
+      <section className="panel">
+        <div
+          className={`reader-wrap ${flashLevel ? `reader-flash-${flashLevel}` : ""}`}
+        >
+          <video
+            ref={videoRef}
+            className="reader-video"
+            muted
+            playsInline
+            autoPlay
+          />
+          {!cameraReady ? <div className="overlay">Camera idle</div> : null}
+          <div className="camera-inline-actions">
+            {!cameraReady ? (
+              <button
+                className="camera-mini-btn camera-mini-btn-start"
+                type="button"
+                onClick={() => void startScanner()}
+                disabled={processing}
+              >
+                <span aria-hidden>📷</span>
+                <span>Start</span>
+              </button>
+            ) : (
+              <button
+                className="camera-mini-btn camera-mini-btn-stop"
+                type="button"
+                onClick={stopScanner}
+              >
+                <span aria-hidden>⏹</span>
+                <span>Stop</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {activeCameraLabel ? (
+          <p className="help-text">Camera: {activeCameraLabel}</p>
+        ) : null}
+
+        {cameraError ? (
+          <p className="error-text">Camera issue: {cameraError}</p>
+        ) : null}
+      </section>
+
+      <section className={resultClass}>
+        <h2>{result.title}</h2>
+        <p>{result.message}</p>
+        {result.checkedInAt ? (
+          <p className="meta">
+            Timestamp: {new Date(result.checkedInAt).toLocaleString()}
+          </p>
+        ) : null}
+      </section>
+
+      <section className="panel">
+        <p className="label">Last Scanned Value</p>
+        <p className="last-value">{lastScannedValue}</p>
+      </section>
+
+      <section className="panel">
+        <label className="label" htmlFor="manual-token">
+          Manual Token / URL
+        </label>
+        <div className="row">
+          <input
+            id="manual-token"
+            className="input"
+            type="text"
+            value={manualInput}
+            onChange={(event) => {
+              setManualInput(event.target.value);
+            }}
+            placeholder="Paste token or QR URL"
+          />
+          <button
+            className="btn btn-secondary"
+            type="button"
+            onClick={submitManualToken}
+            disabled={processing}
+          >
+            Submit
+          </button>
+        </div>
+      </section>
 
       <section className="panel panel-collapsible">
         <details>
@@ -492,85 +579,6 @@ export default function App() {
             </div>
           </div>
         </details>
-      </section>
-
-      <section className="panel">
-        <div
-          className={`reader-wrap ${flashLevel ? `reader-flash-${flashLevel}` : ""}`}
-        >
-          <video
-            ref={videoRef}
-            className="reader-video"
-            muted
-            playsInline
-            autoPlay
-          />
-          {!cameraReady ? <div className="overlay">Camera idle</div> : null}
-        </div>
-
-        {activeCameraLabel ? (
-          <p className="help-text">Camera: {activeCameraLabel}</p>
-        ) : null}
-
-        <div className="actions">
-          <button
-            className="btn btn-primary"
-            type="button"
-            onClick={() => void startScanner()}
-          >
-            Start Camera
-          </button>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={stopScanner}
-          >
-            Stop
-          </button>
-        </div>
-
-        <label className="label" htmlFor="manual-token">
-          Manual Token / URL
-        </label>
-        <div className="row">
-          <input
-            id="manual-token"
-            className="input"
-            type="text"
-            value={manualInput}
-            onChange={(event) => {
-              setManualInput(event.target.value);
-            }}
-            placeholder="Paste token or QR URL"
-          />
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={submitManualToken}
-            disabled={processing}
-          >
-            Submit
-          </button>
-        </div>
-
-        {cameraError ? (
-          <p className="error-text">Camera issue: {cameraError}</p>
-        ) : null}
-      </section>
-
-      <section className={resultClass}>
-        <h2>{result.title}</h2>
-        <p>{result.message}</p>
-        {result.checkedInAt ? (
-          <p className="meta">
-            Timestamp: {new Date(result.checkedInAt).toLocaleString()}
-          </p>
-        ) : null}
-      </section>
-
-      <section className="panel">
-        <p className="label">Last Scanned Value</p>
-        <p className="last-value">{lastScannedValue}</p>
       </section>
 
       {toast ? (

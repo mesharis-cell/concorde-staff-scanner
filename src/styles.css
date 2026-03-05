@@ -172,6 +172,47 @@ body {
   background: rgba(0, 0, 0, 0.58);
 }
 
+.camera-inline-actions {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  display: flex;
+  gap: 6px;
+}
+
+.camera-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.62);
+  color: #f5f5f5;
+  padding: 6px 10px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  cursor: pointer;
+}
+
+.camera-mini-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.camera-mini-btn-start:hover {
+  border-color: rgba(212, 165, 116, 0.9);
+}
+
+.camera-mini-btn-stop {
+  border-color: rgba(248, 113, 113, 0.8);
+}
+
+.camera-mini-btn-stop:hover {
+  background: rgba(127, 29, 29, 0.72);
+}
+
 .reader-flash-success {
   animation: scannerFlashSuccess 0.95s ease-out;
 }
@@ -182,14 +223,6 @@ body {
 
 .reader-flash-error {
   animation: scannerFlashError 0.95s ease-out;
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-  margin-bottom: 10px;
 }
 
 .btn {
@@ -324,25 +357,28 @@ body {
   color: #fef2f2;
 }
 
-.install-icon-btn {
+.install-action-btn {
   position: absolute;
   top: 0;
   right: 0;
-  width: 36px;
-  height: 36px;
+  height: 34px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: var(--text-main);
   background: rgba(255, 255, 255, 0.08);
-  font-size: 1.05rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   line-height: 1;
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   justify-content: center;
+  padding: 0 12px;
   cursor: pointer;
 }
 
-.install-icon-btn:hover {
+.install-action-btn:hover {
   border-color: rgba(255, 255, 255, 0.36);
   background: rgba(255, 255, 255, 0.14);
 }
@@ -430,5 +466,12 @@ body {
   .reader-video {
     min-height: 300px;
     height: 300px;
+  }
+
+  .install-action-btn {
+    top: -2px;
+    height: 32px;
+    padding: 0 10px;
+    font-size: 0.68rem;
   }
 }
